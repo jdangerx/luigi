@@ -274,8 +274,8 @@ def run_and_track_hadoop_job(arglist, tracking_url_callback=None, env=None):
                 if err_line:
                     logger.info('%s', err_line)
                 err_line = err_line.lower()
-                if err_line.find('tracking url') != -1:
-                    tracking_url = err_line.split('tracking url: ')[-1]
+                if err_line.find('url to track the job: ') != -1:
+                    tracking_url = err_line.split('url to track the job: ')[-1]
                     try:
                         tracking_url_callback(tracking_url)
                     except Exception as e:
@@ -300,8 +300,9 @@ def run_and_track_hadoop_job(arglist, tracking_url_callback=None, env=None):
 
         # Try to fetch error logs if possible
         message = 'Streaming job failed with exit code %d. ' % proc.returncode
+        print("STDOUT\n=====\n", out, "STDERR\n=====\n", err)
         if not tracking_url:
-            raise HadoopJobError(message + 'Also, no tracking url found.', out, err)
+            raise HadoopJobError(message + 'Also, no tracking url found.')
 
         try:
             task_failures = fetch_task_failures(tracking_url)
@@ -310,9 +311,9 @@ def run_and_track_hadoop_job(arglist, tracking_url_callback=None, env=None):
                                  (tracking_url, e), out, err)
 
         if not task_failures:
-            raise HadoopJobError(message + 'Also, could not fetch output from tasks.', out, err)
+            raise HadoopJobError(message + 'Also, could not fetch output from tasks.')
         else:
-            raise HadoopJobError(message + 'Output from tasks below:\n%s' % task_failures, out, err)
+            raise HadoopJobError(message + 'Output from tasks below:\n%s' % task_failures)
 
     if tracking_url_callback is None:
         tracking_url_callback = lambda x: None
