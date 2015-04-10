@@ -274,8 +274,11 @@ def run_and_track_hadoop_job(arglist, tracking_url_callback=None, env=None):
                 if err_line:
                     logger.info('%s', err_line)
                 err_line = err_line.lower()
-                if err_line.find('tracking url') != -1:
+                if 'tracking url:' in err_line:
                     tracking_url = err_line.split('tracking url: ')[-1]
+                elif 'url to track the job:' in err_line:
+                    tracking_url = err_line.split('url to track the job: ')[-1]
+                if tracking_url:
                     try:
                         tracking_url_callback(tracking_url)
                     except Exception as e:
