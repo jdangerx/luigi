@@ -309,12 +309,11 @@ def run_and_track_hadoop_job(arglist, tracking_url_callback=None, env=None):
         if not tracking_url:
             raise HadoopJobError(message + 'Also, no tracking url found.', out, err)
 
-        task_failures = fetch_task_failures(tracking_url)
-        # try:
-        #     task_failures = fetch_task_failures(tracking_url)
-        # except Exception as e:
-        #     raise HadoopJobError(message + 'Additionally, an error occurred when fetching data from %s: %s' %
-        #                          (tracking_url, e), out, err)
+        try:
+            task_failures = fetch_task_failures(tracking_url)
+        except Exception as e:
+            raise HadoopJobError(message + 'Additionally, an error occurred when fetching data from %s: %s' %
+                                 (tracking_url, e))
 
         if not task_failures:
             raise HadoopJobError(message + 'Also, could not fetch output from tasks.', out, err)
@@ -350,16 +349,16 @@ def fetch_task_failures(tracking_url):
     p = b.open(failures_url, timeout=timeout)
     if is_apache2:
         links = []
-        containers = list(b.links(text_regex="container"))
-        for container in containers:
+        containers = list(b.links(text_regex="container"))[0].text  # the links are all hidden in one link text
+        container_urls = re.split("/.*? [A|P]M ?", containers)[:-1]
+        for container in container_urls:
             b3 = mechanize.Browser()
-            b3.open(failures_url)
-            b3.open(container.url)
+            b3.open(failures_url, timeout=timeout)  # the links are all relative, so we need to open something first.
+            b3.open(container, timeout=timeout)
             stderr_link = list(b3.links(url_regex="stderr"))[0]
             syslog_url = stderr_link.url.replace("stderr", "syslog")
             syslog = b3.open(syslog_url, timeout=timeout).read().lower()
             if "fail" not in syslog:
-                raise Exception(syslog, syslog_url, stderr_link)
                 continue
             else:
                 links.append(stderr_link)
@@ -372,6 +371,8 @@ def fetch_task_failures(tracking_url):
         logger.debug('Fetching data from %s', task_url)
         b2 = mechanize.Browser()
         try:
+            if is_apache2:
+                r = b2.open(failures_url, timeout=timeout)  # the links are all relative, so we need to open something first.
             r = b2.open(task_url, timeout=timeout)
             data = r.read()
         except Exception as e:
