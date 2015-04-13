@@ -266,6 +266,7 @@ def run_and_track_hadoop_job(arglist, tracking_url_callback=None, env=None):
         job_id = None
         err_lines = []
 
+
         with HadoopRunContext() as hadoop_context:
             while proc.poll() is None:
                 err_line = proc.stderr.readline()
@@ -274,11 +275,13 @@ def run_and_track_hadoop_job(arglist, tracking_url_callback=None, env=None):
                 if err_line:
                     logger.info('%s', err_line)
                 err_line = err_line.lower()
-                if 'tracking url:' in err_line:
-                    tracking_url = err_line.split('tracking url: ')[-1]
-                elif 'url to track the job:' in err_line:
-                    tracking_url = err_line.split('url to track the job: ')[-1]
-                if tracking_url:
+
+                tracking_url_substring = "tracking url: "
+                if configuration.get_config().get("hadoop", "version", None) == "apache2":
+                    tracking_url_substring = "url to track the job: "
+
+                if tracking_url_substring in err_line:
+                    tracking_url = err_line.split(tracking_url_substring)[-1]
                     try:
                         tracking_url_callback(tracking_url)
                     except Exception as e:
@@ -306,11 +309,12 @@ def run_and_track_hadoop_job(arglist, tracking_url_callback=None, env=None):
         if not tracking_url:
             raise HadoopJobError(message + 'Also, no tracking url found.', out, err)
 
-        try:
-            task_failures = fetch_task_failures(tracking_url)
-        except Exception as e:
-            raise HadoopJobError(message + 'Additionally, an error occurred when fetching data from %s: %s' %
-                                 (tracking_url, e), out, err)
+        task_failures = fetch_task_failures(tracking_url)
+        # try:
+        #     task_failures = fetch_task_failures(tracking_url)
+        # except Exception as e:
+        #     raise HadoopJobError(message + 'Additionally, an error occurred when fetching data from %s: %s' %
+        #                          (tracking_url, e), out, err)
 
         if not task_failures:
             raise HadoopJobError(message + 'Also, could not fetch output from tasks.', out, err)
@@ -336,12 +340,32 @@ def fetch_task_failures(tracking_url):
     """
     import mechanize
     timeout = 3.0
-    failures_url = tracking_url.replace('jobdetails.jsp', 'jobfailures.jsp') + '&cause=failed'
+    is_apache2 = configuration.get_config().get("hadoop", "version", None) == "apache2"
+    if is_apache2:
+        failures_url = tracking_url.replace("proxy", "logs/userlogs")
+    else:
+        failures_url = tracking_url.replace('jobdetails.jsp', 'jobfailures.jsp') + '&cause=failed'
     logger.debug('Fetching data from %s', failures_url)
     b = mechanize.Browser()
-    b.open(failures_url, timeout=timeout)
-    links = list(b.links(text_regex='Last 4KB'))  # For some reason text_regex='All' doesn't work... no idea why
-    links = random.sample(links, min(10, len(links)))  # Fetch a random subset of all failed tasks, so not to be biased towards the early fails
+    p = b.open(failures_url, timeout=timeout)
+    if is_apache2:
+        links = []
+        containers = list(b.links(text_regex="container"))
+        for container in containers:
+            b3 = mechanize.Browser()
+            b3.open(failures_url)
+            b3.open(container.url)
+            stderr_link = list(b3.links(url_regex="stderr"))[0]
+            syslog_url = stderr_link.url.replace("stderr", "syslog")
+            syslog = b3.open(syslog_url, timeout=timeout).read().lower()
+            if "fail" not in syslog:
+                raise Exception(syslog, syslog_url, stderr_link)
+                continue
+            else:
+                links.append(stderr_link)
+    else:
+        links = list(b.links(text_regex='Last 4KB'))  # For some reason text_regex='All' doesn't work... no idea why
+        links = random.sample(links, min(10, len(links)))  # Fetch a random subset of all failed tasks, so not to be biased towards the early fails
     error_text = []
     for link in links:
         task_url = link.url.replace('&start=-4097', '&start=-100000')  # Increase the offset

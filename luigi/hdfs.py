@@ -660,7 +660,7 @@ def create_hadoopcli_client():
         return HdfsClient()
     elif version == "cdh3":
         return HdfsClientCdh3()
-    elif version == "apache1":
+    elif version == "apache1" or version == "apache2":
         return HdfsClientApache1()
     else:
         raise Exception("Error: Unknown version specified in Hadoop version"
