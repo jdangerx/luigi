@@ -318,7 +318,8 @@ def run_and_track_hadoop_job(arglist, tracking_url_callback=None, env=None):
         if not task_failures:
             raise HadoopJobError(message + 'Also, could not fetch output from tasks.', out, err)
         else:
-            raise HadoopJobError(message + 'Output from tasks below:\n%s' % task_failures, out, err)
+            sys.stderr.write(task_failures)
+            raise HadoopJobError(message + 'Output from tasks above:\n', out, err)
 
     if tracking_url_callback is None:
         tracking_url_callback = lambda x: None
